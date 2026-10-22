@@ -4,5 +4,6 @@
 !.env.example
 node_modules/
 .next/
+.vercel/
 npm-debug.log*
 server-*.log

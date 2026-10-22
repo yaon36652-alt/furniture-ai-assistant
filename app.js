@@ -507,12 +507,11 @@ function setRoom(roomId){
 async function initializeApp(){
   if (initializeApp.started) return;
   initializeApp.started = true;
+  // Bind navigation and view controls before any network request. If the
+  // catalog endpoint is unavailable, the rest of the app remains usable.
+  bindCoreInteractions();
   await loadFurnitureCatalog();
   renderRecommendations(); renderShopping(); renderPreviewSelection(); renderOverviewFeatured();
-  $$('.nav-item').forEach(btn=>btn.addEventListener('click',()=>{showView(btn.dataset.view); $('.sidebar')?.classList.remove('open');}));
-  $$('[data-view-jump]').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.viewJump)));
-  $('#mobile-menu').addEventListener('click',()=>$('.sidebar').classList.toggle('open'));
-  $('#chat-fab').addEventListener('click',()=>{ $('#chat-panel').style.display='flex'; scrollChatToBottom('auto'); }); $('#close-chat').addEventListener('click',()=>$('#chat-panel').style.display='none');
   loadState();
   selectedProductId=null;
   renderRecommendations(); renderShopping(); renderOverviewFeatured(); renderSelectedProductPanel(); renderPreviewSelection();
@@ -564,6 +563,16 @@ async function initializeApp(){
     clearPreviewFurnitureSelection();
   });
   setPreviewMode(previewMode);
+}
+
+function bindCoreInteractions(){
+  if(bindCoreInteractions.started)return;
+  bindCoreInteractions.started=true;
+  $$('.nav-item').forEach(btn=>btn.addEventListener('click',()=>{showView(btn.dataset.view); $('.sidebar')?.classList.remove('open');}));
+  $$('[data-view-jump]').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.viewJump)));
+  $('#mobile-menu')?.addEventListener('click',()=>$('.sidebar')?.classList.toggle('open'));
+  $('#chat-fab')?.addEventListener('click',()=>{ $('#chat-panel').style.display='flex'; scrollChatToBottom('auto'); });
+  $('#close-chat')?.addEventListener('click',()=>$('#chat-panel').style.display='none');
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeApp, { once: true });
