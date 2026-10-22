@@ -13,7 +13,7 @@ module.exports = function furnitureDatabaseHandler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
 
-  const file = path.join(__dirname, '..', 'furniture_db.json');
+  const file = path.join(__dirname, '..', 'public', 'furniture_db.json');
   try {
     const source = fs.readFileSync(file, 'utf8');
     const catalog = JSON.parse(source);

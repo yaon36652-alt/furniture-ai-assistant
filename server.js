@@ -120,7 +120,7 @@ function cleanNumber(value, fallback = 0) {
 
 function loadFurnitureCatalog() {
   try {
-    const source = fs.readFileSync(path.join(root, 'furniture_db.json'), 'utf8');
+    const source = fs.readFileSync(path.join(root, 'public', 'furniture_db.json'), 'utf8');
     const items = JSON.parse(source);
     if (!Array.isArray(items)) return [];
     // Keep only decision-relevant fields. This prevents image paths, packaging text,
@@ -601,11 +601,12 @@ function createAppServer() {
     res.writeHead(404);
     return res.end('Not found');
   }
-  // Furniture images live under public/assets, while the UI and database stay at the project root.
+  // All browser-facing files live under public/. Keep furniture images in their
+  // narrower directory so a path can never escape the intended asset root.
   const file = isFurnitureImage
     ? path.resolve(root, 'public', `.${requested}`)
-    : path.resolve(root, `.${requested}`);
-  const allowedRoot = isFurnitureImage ? path.resolve(root, 'public', 'assets', 'furniture') : root;
+    : path.resolve(root, 'public', `.${requested}`);
+  const allowedRoot = isFurnitureImage ? path.resolve(root, 'public', 'assets', 'furniture') : path.resolve(root, 'public');
   const relative = path.relative(allowedRoot, file);
   if (relative.startsWith('..') || path.isAbsolute(relative)) { res.writeHead(403); return res.end('Forbidden'); }
   fs.realpath(file, (fileError, realFile) => {
