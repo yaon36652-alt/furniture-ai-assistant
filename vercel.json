@@ -4,11 +4,11 @@
     "api/index.js": {
       "runtime": "nodejs22.x",
       "maxDuration": 60,
-      "includeFiles": ["furniture_db.json"]
+      "includeFiles": "furniture_db.json"
     },
     "api/furniture-db.js": {
       "runtime": "nodejs22.x",
-      "includeFiles": ["furniture_db.json"]
+      "includeFiles": "furniture_db.json"
     }
   },
   "routes": [
