@@ -5,9 +5,8 @@
   "engines": { "node": ">=22" },
   "description": "FurniGuide AI furniture buying assistant MVP",
   "scripts": {
-    "dev": "next dev -p 4173",
-    "start": "next start -p 4173",
-    "build": "next build",
+    "dev": "node --env-file-if-exists=.env.local --use-env-proxy server.js",
+    "start": "node --env-file-if-exists=.env.local --use-env-proxy server.js",
     "test": "node --test"
   },
   "dependencies": {

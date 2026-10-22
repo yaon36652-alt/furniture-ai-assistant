@@ -12,6 +12,7 @@ let mockModel;
 let appProcess;
 let appUrl;
 let receivedRequest;
+let modelRequestCount = 0;
 let runtimeRoot;
 
 function listen(server) {
@@ -42,6 +43,7 @@ before(async () => {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
+      modelRequestCount += 1;
       receivedRequest = { authorization: req.headers.authorization, body: JSON.parse(body) };
       const question = receivedRequest.body.messages.at(-1).content;
       if (question === 'test-auth' || question === 'test-rate-limit' || question === 'test-model-not-found' || question === 'test-endpoint-not-found') {
@@ -49,6 +51,14 @@ before(async () => {
         const message = question === 'test-model-not-found' ? 'model does not exist' : question === 'test-endpoint-not-found' ? 'route not found' : 'private upstream error';
         res.writeHead(status, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: { message } }));
+      }
+      if (question === 'stream-test') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: '第一段' } }] })}\n\n`);
+        return setTimeout(() => {
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: '第二段' } }] })}\n\n`);
+          res.end('data: [DONE]\n\n');
+        }, 10);
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ choices: [{ message: { content: '已结合卧室尺寸、预算和家具清单回答。' } }] }));
@@ -63,7 +73,7 @@ before(async () => {
   fs.copyFileSync(path.join(projectRoot, 'server.js'), path.join(runtimeRoot, 'server.js'));
   appProcess = spawn(process.execPath, ['server.js'], {
     cwd: runtimeRoot,
-    env: { ...process.env, PORT: String(appPort), OPENAI_API_KEY: 'test-only-key', OPENAI_BASE_URL: `http://127.0.0.1:${mockPort}/v1`, OPENAI_MODEL: 'test-model' },
+    env: { ...process.env, PORT: String(appPort), FURNIGUIDE_RATE_LIMIT_MAX: '100', OPENAI_API_KEY: 'test-only-key', OPENAI_BASE_URL: `http://127.0.0.1:${mockPort}/v1`, OPENAI_MODEL: 'test-model' },
     stdio: 'ignore'
   });
   await waitForServer(appUrl, appProcess);
@@ -187,4 +197,36 @@ test('distinguishes missing models from an invalid API endpoint', async () => {
     assert.equal(body.error, code);
     assert.match(body.message, /OPENAI_(MODEL|BASE_URL)/);
   }
+});
+
+test('serves preview requests with real furniture SKU identifiers', async () => {
+  const response = await fetch(`${appUrl}/api/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room: { roomName: '客厅' }, selection: ['sofa-001'] })
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.mode, 'mock');
+  assert.deepEqual(body.selection, ['sofa-001']);
+});
+
+test('streams model chunks and serves an exact repeated question from memory cache', async () => {
+  const requestBody = JSON.stringify({ message: 'stream-test', context: { roomName: '客厅' } });
+  const before = modelRequestCount;
+  const first = await fetch(`${appUrl}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' }, body: requestBody });
+  const firstText = await first.text();
+  assert.equal(first.status, 200);
+  assert.match(first.headers.get('content-type'), /text\/event-stream/);
+  assert.match(firstText, /event: chunk/);
+  assert.match(firstText, /第一段/);
+  assert.match(firstText, /第二段/);
+  assert.match(firstText, /event: done/);
+  assert.equal(modelRequestCount, before + 1);
+
+  const second = await fetch(`${appUrl}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' }, body: requestBody });
+  const secondText = await second.text();
+  assert.equal(second.status, 200);
+  assert.match(secondText, /"mode":"cache"/);
+  assert.equal(modelRequestCount, before + 1);
 });

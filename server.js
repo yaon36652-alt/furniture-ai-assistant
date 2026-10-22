@@ -2,9 +2,11 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// Next bundles this module into .next/server chunks, so __dirname is not the
-// project root at runtime. Vercel and the local server both run from cwd.
-const root = process.env.FURNIGUIDE_ROOT || process.cwd();
+// Resolve app files from this server's project root. This keeps the static
+// frontend and furniture catalog stable even when the command is launched
+// from another current directory. The server does not load Next.js or read
+// from the .next build cache.
+const root = process.env.FURNIGUIDE_ROOT || __dirname;
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -30,10 +32,57 @@ function loadLocalEnv() {
   }
 }
 loadLocalEnv();
+const proxyUrl = String(process.env.PROXY_URL || '').trim();
+if (proxyUrl) {
+  process.env.HTTPS_PROXY = proxyUrl;
+  process.env.HTTP_PROXY = proxyUrl;
+}
 const port = process.env.PORT || 4173;
+const chatRateLimit = new Map();
+const CHAT_RATE_WINDOW_MS = 60 * 1000;
+const CHAT_RATE_MAX = Math.max(1, Number(process.env.FURNIGUIDE_RATE_LIMIT_MAX || 10));
 
-function sendJson(res, status, payload) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+function securityHeaders() {
+  return {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY'
+  };
+}
+
+function redactSensitive(value) {
+  let text = String(value ?? '');
+  for (const secret of [process.env.OPENAI_API_KEY, process.env.SUPABASE_ANON_KEY]) {
+    if (secret) text = text.split(secret).join('[redacted]');
+  }
+  return text
+    .replace(/Bearer\s+[^\s,;]+/gi, 'Bearer <redacted>')
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-<redacted>');
+}
+
+function clientIp(req) {
+  // Do not trust X-Forwarded-For from an arbitrary public client. A reverse
+  // proxy can be handled explicitly later when its trusted IP range is known.
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function consumeChatRateLimit(ip, now = Date.now()) {
+  const recent = (chatRateLimit.get(ip) || []).filter(timestamp => now - timestamp < CHAT_RATE_WINDOW_MS);
+  if (recent.length >= CHAT_RATE_MAX) {
+    chatRateLimit.set(ip, recent);
+    return Math.max(1, Math.ceil((CHAT_RATE_WINDOW_MS - (now - recent[0])) / 1000));
+  }
+  recent.push(now);
+  chatRateLimit.set(ip, recent);
+  if (chatRateLimit.size > 10000) {
+    for (const [key, timestamps] of chatRateLimit) {
+      if (!timestamps.some(timestamp => now - timestamp < CHAT_RATE_WINDOW_MS)) chatRateLimit.delete(key);
+    }
+  }
+  return 0;
+}
+
+function sendJson(res, status, payload, headers = {}) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers });
   res.end(JSON.stringify(payload));
 }
 
@@ -102,6 +151,18 @@ function loadFurnitureCatalog() {
 
 const furnitureCatalog = loadFurnitureCatalog();
 
+// The model only needs a compact decision index. Keep style because users
+// commonly ask for a style/category combination such as “奶油风床”; omit
+// material, features, packaging and delivery details from this repeated prompt.
+const promptFurnitureCatalog = furnitureCatalog.map(item => ({
+  id: item.id,
+  name: item.name,
+  category: item.category,
+  style: item.style,
+  price: item.price,
+  dimensions: item.dimensions
+}));
+
 function boundedCatalogJson(items, maxChars = 7000) {
   const selected = [];
   for (const item of items) {
@@ -112,7 +173,20 @@ function boundedCatalogJson(items, maxChars = 7000) {
   return JSON.stringify(selected);
 }
 
-const furnitureCatalogJson = boundedCatalogJson(furnitureCatalog);
+const furnitureCatalogJson = boundedCatalogJson(promptFurnitureCatalog, 4200);
+
+const chatAnswerCache = new Map();
+const CHAT_CACHE_LIMIT = 100;
+
+function getCachedChatAnswer(message) {
+  return chatAnswerCache.get(message);
+}
+
+function cacheChatAnswer(message, answer) {
+  if (chatAnswerCache.has(message)) chatAnswerCache.delete(message);
+  chatAnswerCache.set(message, answer);
+  while (chatAnswerCache.size > CHAT_CACHE_LIMIT) chatAnswerCache.delete(chatAnswerCache.keys().next().value);
+}
 
 function cleanFurniture(items) {
   if (!Array.isArray(items)) return [];
@@ -206,7 +280,65 @@ function fallbackChat(message, context) {
   return response(`当前是${room}，约 ${dimensions.length || '?'} × ${dimensions.width || '?'}cm，按 ${household} 口人规划；清单中有 ${items.length} 件家具。${candidates ? `这个空间的候选包括：${candidates}。` : ''}你可以告诉我具体商品名，或问尺寸、入户、材质和预算，我会针对当前空间回答。`);
 }
 
-async function modelChat(message, context) {
+function buildSystemPrompt(context) {
+  const rules = '你是 FurniGuide 的高效、亲切、接地气的 C 端电商软装 AI 导购，不是学术分析师。回答采用“结论先行 + 核心原因 + 建议动作”，总字数控制在 80-150 字以内。第一句必须直接给明确结论。禁止冗长逻辑和数据堆砌，需要分点时最多 3 条。';
+  return [rules, '家具决策索引（仅含 id、名称、品类、风格、价格和尺寸）：', furnitureCatalogJson, '当前页面上下文 JSON：', JSON.stringify(context), '只能根据上下文和索引回答，缺少的数据要明确说缺失，不可臆造。'].join('\n');
+}
+
+function modelErrorFromCause(cause, startedAt) {
+  const timedOut = cause.name === 'TimeoutError' || cause.name === 'AbortError';
+  const networkCode = cause.cause?.code || cause.code;
+  const code = timedOut ? 'model_timeout' : networkCode === 'ENOTFOUND' || networkCode === 'EAI_AGAIN' ? 'model_dns_error' : 'model_network_error';
+  const error = new Error(code, { cause });
+  error.statusCode = timedOut ? 504 : 502;
+  error.elapsedMs = Date.now() - startedAt;
+  return error;
+}
+
+async function openModelStream(message, context) {
+  if (!process.env.OPENAI_API_KEY) {
+    const error = new Error('missing_api_key');
+    error.statusCode = 503;
+    throw error;
+  }
+  const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
+  const model = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: buildSystemPrompt(context) }, { role: 'user', content: String(message || '').slice(0, 2000) }] }),
+      signal: AbortSignal.timeout(60000)
+    });
+  } catch (cause) {
+    throw modelErrorFromCause(cause, startedAt);
+  }
+  if (!response.ok) {
+    const rawBody = (await response.text()).slice(0, 1000);
+    let providerDetail = rawBody.replace(/[\r\n]+/g, ' ').replace(/Bearer\s+[^\s]+/gi, 'Bearer <redacted>');
+    try {
+      const parsed = JSON.parse(rawBody);
+      providerDetail = String(parsed?.error?.message || parsed?.message || parsed?.error?.code || providerDetail);
+    } catch { /* provider may return plain text */ }
+    const lowerDetail = providerDetail.toLowerCase();
+    const statusCode = response.status === 401 || response.status === 403 ? 'model_auth_failed'
+      : response.status === 429 ? 'model_rate_limited'
+        : response.status === 404 && /model|deployment/.test(lowerDetail) ? 'model_not_found'
+          : response.status === 404 ? 'model_endpoint_not_found'
+            : `model_http_${response.status}`;
+    const error = new Error(statusCode);
+    error.statusCode = 502;
+    error.providerStatus = response.status;
+    error.providerDetail = providerDetail.slice(0, 300);
+    error.elapsedMs = Date.now() - startedAt;
+    throw error;
+  }
+  return { response, model, startedAt };
+}
+
+async function legacyModelChat(message, context) {
   if (!process.env.OPENAI_API_KEY) {
     const error = new Error('missing_api_key');
     error.statusCode = 503;
@@ -271,8 +403,111 @@ async function modelChat(message, context) {
   return { answer, mode: 'model', model };
 }
 
+async function modelChat(message, context) {
+  const cached = getCachedChatAnswer(message);
+  const model = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+  if (cached) return { answer: cached, mode: 'cache', cached: true, model };
+  const { response, model: responseModel, startedAt } = await openModelStream(message, context);
+  let data;
+  try { data = await response.json(); }
+  catch (cause) {
+    const error = new Error('model_invalid_response', { cause });
+    error.statusCode = 502;
+    error.elapsedMs = Date.now() - startedAt;
+    throw error;
+  }
+  const answer = typeof data.choices?.[0]?.message?.content === 'string' ? data.choices[0].message.content.trim() : '';
+  if (!answer) {
+    const error = new Error('model_empty_response');
+    error.statusCode = 502;
+    error.elapsedMs = Date.now() - startedAt;
+    throw error;
+  }
+  cacheChatAnswer(message, answer);
+  return { answer, mode: 'model', model: responseModel };
+}
+
+async function streamModelChat(message, context, onChunk) {
+  const cached = getCachedChatAnswer(message);
+  const model = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+  if (cached) {
+    onChunk(cached);
+    return { answer: cached, mode: 'cache', cached: true, model };
+  }
+  const { response, model: responseModel, startedAt } = await openModelStream(message, context);
+  if (!response.body) throw Object.assign(new Error('model_empty_response'), { statusCode: 502, elapsedMs: Date.now() - startedAt });
+  const contentType = response.headers.get('content-type') || '';
+  let answer = '';
+  if (contentType.includes('application/json')) {
+    const data = await response.json();
+    answer = typeof data.choices?.[0]?.message?.content === 'string' ? data.choices[0].message.content : '';
+    if (answer) onChunk(answer);
+  } else {
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const consume = line => {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data:')) return;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === '[DONE]') return;
+      let parsed;
+      try { parsed = JSON.parse(payload); } catch { return; }
+      const text = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.text ?? '';
+      if (typeof text === 'string' && text) { answer += text; onChunk(text); }
+    };
+    for await (const chunk of response.body) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || '';
+      lines.forEach(consume);
+    }
+    buffer += decoder.decode();
+    buffer.split(/\r?\n/).forEach(consume);
+  }
+  answer = answer.trim();
+  if (!answer) {
+    const error = new Error('model_empty_response');
+    error.statusCode = 502;
+    error.elapsedMs = Date.now() - startedAt;
+    throw error;
+  }
+  cacheChatAnswer(message, answer);
+  return { answer, mode: 'model', model: responseModel };
+}
+
+function writeSse(res, event, payload) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
+function streamChatError(res, error) {
+  const messageMap = {
+    missing_api_key: '尚未配置大模型 API Key，请检查 .env.local。',
+    model_timeout: '大模型响应超时，请稍后重试。',
+    model_auth_failed: '大模型 API Key 无效或没有调用权限。',
+    model_rate_limited: '大模型服务当前请求过多或额度不足，请稍后重试。',
+    model_not_found: '上游服务找不到配置的模型，请检查 OPENAI_MODEL。',
+    model_endpoint_not_found: '上游 API 路径不存在，请检查 OPENAI_BASE_URL。',
+    model_network_error: '无法连接大模型服务，请检查网络和代理配置。',
+    model_dns_error: '无法解析大模型服务域名，请检查网络和代理配置。',
+    model_invalid_response: '大模型返回了无法解析的响应。',
+    model_empty_response: '大模型没有返回文本内容。'
+  };
+  logChatError(error);
+  writeSse(res, 'error', { error: error.message || 'chat_unavailable', message: messageMap[error.message] || '大模型服务暂时不可用，请稍后重试。' });
+  res.end();
+}
+
+function logChatError(error) {
+  const upstreamCode = error.cause?.cause?.code || error.cause?.code;
+  const detail = error.providerDetail || error.cause?.cause?.message || error.cause?.message || error.message;
+  let providerHost = 'unknown';
+  try { providerHost = new URL(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').host; } catch { /* invalid base URL is logged without credentials */ }
+  console.error(redactSensitive(`[chat] code=${error.message || 'chat_unavailable'} provider=${providerHost} model=${String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim()} elapsed_ms=${error.elapsedMs || 0}${upstreamCode ? ` upstream_code=${upstreamCode}` : ''}${error.providerStatus ? ` upstream_status=${error.providerStatus}` : ''} reason=${detail || 'unknown'}`.slice(0, 700)));
+}
+
 function createAppServer() {
   return http.createServer((req, res) => {
+  for (const [name, value] of Object.entries(securityHeaders())) res.setHeader(name, value);
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/health') {
     sendJson(res, 200, {
       ok: true,
@@ -284,6 +519,29 @@ function createAppServer() {
     return;
   }
   if (req.method === 'POST' && req.url.split('?')[0] === '/api/chat') {
+    const retryAfter = consumeChatRateLimit(clientIp(req));
+    if (retryAfter) {
+      return sendJson(res, 429, { error: 'rate_limited', message: '请求过于频繁，请稍后再试。' }, { 'Retry-After': String(retryAfter) });
+    }
+    const wantsStream = String(req.headers.accept || '').includes('text/event-stream');
+    if (wantsStream) {
+      readJson(req).then(body => {
+        if (typeof body.message !== 'string' || !body.message.trim()) throw Object.assign(new Error('message_required'), { statusCode: 400 });
+        if (body.message.length > 2000) throw Object.assign(new Error('message_too_long'), { statusCode: 413 });
+        const message = body.message;
+        const context = cleanChatContext(body.context && typeof body.context === 'object' ? body.context : {});
+        res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+        res.flushHeaders?.();
+        writeSse(res, 'meta', { status: 'started' });
+        return streamModelChat(message, context, text => writeSse(res, 'chunk', { text }))
+          .then(result => { writeSse(res, 'done', result); res.end(); })
+          .catch(error => streamChatError(res, error));
+      }).catch(error => {
+        if (res.headersSent) return streamChatError(res, error);
+        sendJson(res, error.statusCode || 400, { error: error.message || 'chat_unavailable', message: '聊天请求无效，请稍后重试。' });
+      });
+      return;
+    }
     readJson(req).then(body => {
       if (typeof body.message !== 'string' || !body.message.trim()) throw new Error('message_required');
       if (body.message.length > 2000) throw new Error('message_too_long');
@@ -308,11 +566,8 @@ function createAppServer() {
       };
       const code = Object.hasOwn(messages, error.message) ? error.message : 'chat_unavailable';
       const upstreamCode = error.cause?.cause?.code || error.cause?.code;
-      const detail = error.providerDetail || error.cause?.cause?.message || error.cause?.message || error.message;
       const model = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
-      let providerHost = 'unknown';
-      try { providerHost = new URL(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').host; } catch { /* invalid base URL is logged without credentials */ }
-      console.error(`[chat] status=${status} code=${code} provider=${providerHost} model=${model} elapsed_ms=${error.elapsedMs || 0}${upstreamCode ? ` upstream_code=${upstreamCode}` : ''}${error.providerStatus ? ` upstream_status=${error.providerStatus}` : ''} reason=${String(detail || 'unknown').replace(/Bearer\s+[^\s]+/gi, 'Bearer <redacted>').slice(0, 300)}`);
+      logChatError(error);
       const publicDetail = code === 'model_timeout'
         ? '请求超过 60 秒未返回。'
         : error.providerStatus
@@ -328,7 +583,7 @@ function createAppServer() {
     readJson(req).then(body => {
       const roomName = String(body.room?.roomName || '当前空间');
       const selection = Array.isArray(body.selection) ? body.selection.slice(0, 12) : [];
-      if (!selection.length || selection.some(id => typeof id !== 'string' || !/^[a-z-]{1,40}$/.test(id))) throw new Error('invalid_selection');
+      if (!selection.length || selection.some(id => typeof id !== 'string' || !/^[a-z0-9-]{1,40}$/i.test(id))) throw new Error('invalid_selection');
       return { message: `${roomName}摆放示意已更新（${selection.length} 件家具）。当前是 2D 示意图，不是照片合成。`, mode: 'mock', selection };
     }).then(result => sendJson(res, 200, result)).catch(error => sendJson(res, 400, { error: 'preview_invalid', message: error.message }));
     return;
@@ -353,10 +608,18 @@ function createAppServer() {
   const allowedRoot = isFurnitureImage ? path.resolve(root, 'public', 'assets', 'furniture') : root;
   const relative = path.relative(allowedRoot, file);
   if (relative.startsWith('..') || path.isAbsolute(relative)) { res.writeHead(403); return res.end('Forbidden'); }
-  fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream' });
-    res.end(data);
+  fs.realpath(file, (fileError, realFile) => {
+    if (fileError) { res.writeHead(404); return res.end('Not found'); }
+    fs.realpath(allowedRoot, (rootError, realAllowedRoot) => {
+      if (rootError) { res.writeHead(404); return res.end('Not found'); }
+      const realRelative = path.relative(realAllowedRoot, realFile);
+      if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) { res.writeHead(403); return res.end('Forbidden'); }
+      fs.readFile(realFile, (err, data) => {
+        if (err) { res.writeHead(404); return res.end('Not found'); }
+        res.writeHead(200, { 'Content-Type': mime[path.extname(realFile)] || 'application/octet-stream' });
+        res.end(data);
+      });
+    });
   });
   });
 }
@@ -364,7 +627,7 @@ function createAppServer() {
 if (require.main === module) {
   createAppServer().listen(port, () => {
     console.log(`FurniGuide running at http://localhost:${port}`);
-    console.log(`[startup] model=${String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim()} furniture_catalog=${furnitureCatalog.length} items prompt_chars=${furnitureCatalogJson.length}`);
+    console.log(`[startup] model=${String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim()} proxy=${proxyUrl ? 'enabled' : 'direct'} furniture_catalog=${furnitureCatalog.length} items prompt_chars=${furnitureCatalogJson.length}`);
   });
 }
 
