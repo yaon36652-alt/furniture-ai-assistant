@@ -1,14 +1,6 @@
 {
-  "version": 2,
-  "rewrites": [
-    {
-      "source": "/api/furniture-db",
-      "destination": "/api/furniture-db.js"
-    },
-    {
-      "source": "/api/:path*",
-      "destination": "/api/index.js"
-    }
-  ]
+  "buildCommand": "",
+  "installCommand": "",
+  "outputDirectory": "public"
 }
 
