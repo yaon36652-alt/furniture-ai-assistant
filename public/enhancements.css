@@ -379,11 +379,43 @@ select {
 .preview-furniture-image { padding: 4px; }
 .preview-furniture-item > span { display: none; position: absolute; left: 50%; bottom: -18px; transform: translateX(-50%); white-space: nowrap; color: #53665a; font-size: 9px; background: rgba(255,255,255,.82); padding: 3px 5px; border-radius: 4px; pointer-events: none; }
 .preview-furniture-item.is-selected > span { display: block; }
-.chat-recommendations { display: grid; gap: 7px; margin-top: 9px; }
-.message.ai .chat-furniture-card { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px; border: 1px solid #dfe7df; border-radius: 7px; background: #fff; text-align: left; color: #53665a; }
+.message.ai .assistant-content {
+  flex: 0 1 252px;
+  width: 100%;
+  max-width: min(88%, 252px);
+  overflow: hidden;
+}
+.message.ai .assistant-content .chat-recommendations {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  margin: 9px 0 0;
+  padding: 0;
+  background: transparent;
+}
+.message.ai .chat-furniture-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid #dfe7df;
+  border-radius: 7px;
+  background: #fff;
+  text-align: left;
+  color: #53665a;
+}
 .message.ai .chat-furniture-card.is-selected { border-color: var(--green); box-shadow: 0 0 0 2px rgba(79, 139, 112, .14); }
 .chat-furniture-card:hover { border-color: #9fc5aa; background: #f7fbf7; }
-.chat-furniture-select { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; padding: 0; border: 0; background: transparent; text-align: left; color: inherit; cursor: pointer; }
+.chat-furniture-select { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; flex: 1 1 auto; padding: 0; border: 0; background: transparent; text-align: left; color: inherit; cursor: pointer; overflow: hidden; }
+.chat-furniture-select > span { min-width: 0; flex: 1 1 auto; overflow: hidden; }
 .chat-furniture-add { flex: none; width: 23px; height: 23px; border: 0; border-radius: 50%; background: #e4eee8; color: var(--green-dark); font-size: 16px; line-height: 1; cursor: pointer; }
 .chat-furniture-add.is-added { background: #5c9b73; color: #fff; }
 .chat-furniture-image { flex: none; width: 42px; height: 42px; border-radius: 5px; padding: 2px; background: #f1f4f0; }
