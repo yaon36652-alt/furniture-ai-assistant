@@ -1,10 +1,10 @@
-const { createAppServer } = require('../server');
+const { createRequestHandler } = require('../server');
 
-// Reuse the same request router as the local Node server, but expose it in
-// Vercel's `(req, res)` Serverless Function shape. No listener is started here.
-const requestServer = createAppServer();
+// Vercel invokes every file in /api as a `(req, res)` Serverless Function.
+// Keep one shared router so local Node and Vercel use identical API behavior.
+const requestHandler = createRequestHandler();
 
-module.exports = function vercelHandler(req, res) {
-  return requestServer.emit('request', req, res);
+module.exports = function handler(req, res) {
+  return requestHandler(req, res);
 };
 

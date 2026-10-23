@@ -505,8 +505,8 @@ function logChatError(error) {
   console.error(redactSensitive(`[chat] code=${error.message || 'chat_unavailable'} provider=${providerHost} model=${String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim()} elapsed_ms=${error.elapsedMs || 0}${upstreamCode ? ` upstream_code=${upstreamCode}` : ''}${error.providerStatus ? ` upstream_status=${error.providerStatus}` : ''} reason=${detail || 'unknown'}`.slice(0, 700)));
 }
 
-function createAppServer() {
-  return http.createServer((req, res) => {
+function createRequestHandler() {
+  return (req, res) => {
   for (const [name, value] of Object.entries(securityHeaders())) res.setHeader(name, value);
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/health') {
     sendJson(res, 200, {
@@ -622,7 +622,11 @@ function createAppServer() {
       });
     });
   });
-  });
+  };
+}
+
+function createAppServer() {
+  return http.createServer(createRequestHandler());
 }
 
 if (require.main === module) {
@@ -635,6 +639,7 @@ if (require.main === module) {
 module.exports = {
   cleanChatContext,
   createAppServer,
+  createRequestHandler,
   fallbackChat,
   furnitureCatalog,
   loadFurnitureCatalog,
