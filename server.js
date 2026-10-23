@@ -33,7 +33,11 @@ function loadLocalEnv() {
 }
 loadLocalEnv();
 const proxyUrl = String(process.env.PROXY_URL || '').trim();
-if (proxyUrl) {
+// PROXY_URL is intended for local development (for example Clash on
+// 127.0.0.1). Never apply a workstation proxy inside Vercel, where that
+// address is not reachable. Production can still use an explicitly supplied
+// HTTPS_PROXY/HTTP_PROXY configured by the platform if needed.
+if (proxyUrl && !process.env.VERCEL) {
   process.env.HTTPS_PROXY = proxyUrl;
   process.env.HTTP_PROXY = proxyUrl;
 }
@@ -118,43 +122,57 @@ function cleanNumber(value, fallback = 0) {
   return Number.isFinite(number) ? Math.min(1000000, Math.max(0, number)) : fallback;
 }
 
+function normalizeFurnitureCatalog(items) {
+  if (!Array.isArray(items)) return [];
+  return items.slice(0, 20).map(item => ({
+    id: String(item?.id || '').slice(0, 40),
+    name: String(item?.name || '').slice(0, 80),
+    category: String(item?.category || '').slice(0, 30),
+    style: String(item?.style || '').slice(0, 30),
+    price: cleanNumber(item?.price),
+    dimensions: {
+      length: cleanNumber(item?.dimensions?.length),
+      width: cleanNumber(item?.dimensions?.width),
+      height: cleanNumber(item?.dimensions?.height)
+    },
+    delivery_constraints: {
+      min_door_width: cleanNumber(item?.delivery_constraints?.min_door_width),
+      is_disassemblable: Boolean(item?.delivery_constraints?.is_disassemblable)
+    },
+    material: String(item?.material || '').slice(0, 100),
+    features: Array.isArray(item?.features) ? item.features.slice(0, 5).map(value => String(value).slice(0, 40)) : []
+  }));
+}
+
 function loadFurnitureCatalog() {
+  const candidates = [
+    path.join(root, 'public', 'furniture_db.json'),
+    path.join(root, 'furniture_db.json'),
+    path.join(process.cwd(), 'public', 'furniture_db.json'),
+    path.join(process.cwd(), 'furniture_db.json')
+  ];
   try {
-    const source = fs.readFileSync(path.join(root, 'public', 'furniture_db.json'), 'utf8');
+    const file = candidates.find(candidate => {
+      try { return fs.statSync(candidate).isFile(); } catch { return false; }
+    });
+    if (!file) throw Object.assign(new Error('furniture_db_not_found'), { code: 'ENOENT' });
+    const source = fs.readFileSync(file, 'utf8');
     const items = JSON.parse(source);
-    if (!Array.isArray(items)) return [];
     // Keep only decision-relevant fields. This prevents image paths, packaging text,
     // and future descriptive fields from inflating every chat request.
-    return items.slice(0, 20).map(item => ({
-      id: String(item?.id || '').slice(0, 40),
-      name: String(item?.name || '').slice(0, 80),
-      category: String(item?.category || '').slice(0, 30),
-      style: String(item?.style || '').slice(0, 30),
-      price: cleanNumber(item?.price),
-      dimensions: {
-        length: cleanNumber(item?.dimensions?.length),
-        width: cleanNumber(item?.dimensions?.width),
-        height: cleanNumber(item?.dimensions?.height)
-      },
-      delivery_constraints: {
-        min_door_width: cleanNumber(item?.delivery_constraints?.min_door_width),
-        is_disassemblable: Boolean(item?.delivery_constraints?.is_disassemblable)
-      },
-      material: String(item?.material || '').slice(0, 100),
-      features: Array.isArray(item?.features) ? item.features.slice(0, 5).map(value => String(value).slice(0, 40)) : []
-    }));
+    return normalizeFurnitureCatalog(items);
   } catch (error) {
     console.error(`[startup] furniture_db_load_failed code=${error.code || error.name} reason=${String(error.message || error).slice(0, 180)}`);
     return [];
   }
 }
 
-const furnitureCatalog = loadFurnitureCatalog();
+let furnitureCatalog = loadFurnitureCatalog();
 
 // The model only needs a compact decision index. Keep style because users
 // commonly ask for a style/category combination such as “奶油风床”; omit
 // material, features, packaging and delivery details from this repeated prompt.
-const promptFurnitureCatalog = furnitureCatalog.map(item => ({
+let promptFurnitureCatalog = furnitureCatalog.map(item => ({
   id: item.id,
   name: item.name,
   category: item.category,
@@ -173,7 +191,23 @@ function boundedCatalogJson(items, maxChars = 7000) {
   return JSON.stringify(selected);
 }
 
-const furnitureCatalogJson = boundedCatalogJson(promptFurnitureCatalog, 4200);
+let furnitureCatalogJson = boundedCatalogJson(promptFurnitureCatalog, 4200);
+
+function configureFurnitureCatalog(items) {
+  const normalized = normalizeFurnitureCatalog(items);
+  if (!normalized.length) return furnitureCatalog;
+  furnitureCatalog = normalized;
+  promptFurnitureCatalog = furnitureCatalog.map(item => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    style: item.style,
+    price: item.price,
+    dimensions: item.dimensions
+  }));
+  furnitureCatalogJson = boundedCatalogJson(promptFurnitureCatalog, 4200);
+  return furnitureCatalog;
+}
 
 const chatAnswerCache = new Map();
 const CHAT_CACHE_LIMIT = 100;
@@ -715,6 +749,7 @@ module.exports = {
   cleanChatContext,
   createAppServer,
   createRequestHandler,
+  configureFurnitureCatalog,
   fallbackChat,
   furnitureCatalog,
   loadFurnitureCatalog,

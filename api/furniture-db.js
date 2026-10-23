@@ -1,5 +1,4 @@
-const fs = require('fs');
-const path = require('path');
+const furnitureData = require('./furniture-data');
 
 module.exports = function furnitureDatabaseHandler(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -13,17 +12,9 @@ module.exports = function furnitureDatabaseHandler(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
 
-  const file = path.join(__dirname, '..', 'public', 'furniture_db.json');
-  try {
-    const source = fs.readFileSync(file, 'utf8');
-    const catalog = JSON.parse(source);
-    if (!Array.isArray(catalog)) throw new Error('家具数据库格式无效');
-    if (req.method === 'HEAD') return res.end();
-    return res.end(JSON.stringify(catalog));
-  } catch (error) {
-    console.error(`[furniture-db] load failed: ${error.code || error.name}`);
-    res.statusCode = 500;
-    return res.end(JSON.stringify({ error: 'furniture_db_unavailable', message: '家具数据暂时不可用。' }));
-  }
+  // Serve the bundled catalog directly. This avoids depending on Vercel's
+  // filesystem packaging rules for public/furniture_db.json.
+  if (req.method === 'HEAD') return res.end();
+  return res.end(JSON.stringify(furnitureData));
 };
 

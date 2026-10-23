@@ -1,0 +1,484 @@
+// Generated from public/furniture_db.json for Vercel Serverless Functions.
+// Keep this file in sync with the public catalog when furniture data changes.
+module.exports = [
+  {
+    "id": "sofa-001",
+    "name": "云境模块沙发",
+    "category": "sofa",
+    "style": "现代极简",
+    "price": 4299,
+    "dimensions": {
+      "length": 280,
+      "width": 92,
+      "height": 78
+    },
+    "delivery_constraints": {
+      "min_door_width": 75,
+      "is_disassemblable": true,
+      "package_size": "3 个模块，单件包装约 105 × 95 × 75 cm"
+    },
+    "material": "亚麻布艺 / 实木框架 / 高回弹海绵",
+    "features": [
+      "适合猫家庭",
+      "可拆洗",
+      "大户型客厅适配"
+    ],
+    "image_url": "/assets/furniture/sofa-001云境模块沙发.png"
+  },
+  {
+    "id": "sofa-002",
+    "name": "原木低扶手双人沙发",
+    "category": "sofa",
+    "style": "原木风",
+    "price": 2899,
+    "dimensions": {
+      "length": 188,
+      "width": 82,
+      "height": 78
+    },
+    "delivery_constraints": {
+      "min_door_width": 70,
+      "is_disassemblable": true,
+      "package_size": "靠背可拆，包装约 195 × 88 × 55 cm"
+    },
+    "material": "科技布 / 白橡木扶手 / 高密度海绵",
+    "features": [
+      "小户型适配",
+      "耐磨抗污",
+      "双人客厅"
+    ],
+    "image_url": "/assets/furniture/sofa-002原木低扶手双人沙发.png"
+  },
+  {
+    "id": "table-001",
+    "name": "白橡木圆几",
+    "category": "table",
+    "style": "原木风",
+    "price": 899,
+    "dimensions": {
+      "length": 78,
+      "width": 78,
+      "height": 42
+    },
+    "delivery_constraints": {
+      "min_door_width": 65,
+      "is_disassemblable": true,
+      "package_size": "桌腿可拆，包装约 84 × 84 × 18 cm"
+    },
+    "material": "白橡木 / 环保木蜡油",
+    "features": [
+      "小户型适配",
+      "圆角防磕",
+      "客厅茶几"
+    ],
+    "image_url": "/assets/furniture/table-001白橡木圆几.png"
+  },
+  {
+    "id": "table-002",
+    "name": "岩板悬浮茶几",
+    "category": "table",
+    "style": "现代极简",
+    "price": 1599,
+    "dimensions": {
+      "length": 120,
+      "width": 60,
+      "height": 38
+    },
+    "delivery_constraints": {
+      "min_door_width": 68,
+      "is_disassemblable": true,
+      "package_size": "桌板与底座分装，包装约 130 × 70 × 20 cm"
+    },
+    "material": "哑光岩板 / 碳钢喷涂底座",
+    "features": [
+      "防水抗污",
+      "耐热",
+      "现代客厅"
+    ],
+    "image_url": "/assets/furniture/table-002 岩板悬浮茶几png.png"
+  },
+  {
+    "id": "tv-cabinet-001",
+    "name": "悬浮式电视柜",
+    "category": "storage",
+    "style": "现代极简",
+    "price": 2199,
+    "dimensions": {
+      "length": 180,
+      "width": 40,
+      "height": 38
+    },
+    "delivery_constraints": {
+      "min_door_width": 60,
+      "is_disassemblable": true,
+      "package_size": "柜体分两箱，单箱约 95 × 48 × 48 cm"
+    },
+    "material": "多层实木板 / 哑光烤漆门板",
+    "features": [
+      "隐藏走线",
+      "小户型适配",
+      "悬空易清洁"
+    ],
+    "image_url": "/assets/furniture/tv-cabinet-001悬浮式电视柜.png"
+  },
+  {
+    "id": "dining-table-001",
+    "name": "四人白橡木餐桌",
+    "category": "table",
+    "style": "原木风",
+    "price": 2699,
+    "dimensions": {
+      "length": 140,
+      "width": 80,
+      "height": 75
+    },
+    "delivery_constraints": {
+      "min_door_width": 72,
+      "is_disassemblable": true,
+      "package_size": "桌腿可拆，包装约 148 × 88 × 16 cm"
+    },
+    "material": "白橡木 / 环保木蜡油",
+    "features": [
+      "四人用餐",
+      "耐磨桌面",
+      "餐厅适配"
+    ],
+    "image_url": "/assets/furniture/dining-table-001四人白橡木餐桌.png"
+  },
+  {
+    "id": "chair-001",
+    "name": "云朵餐椅",
+    "category": "chair",
+    "style": "奶油风",
+    "price": 599,
+    "dimensions": {
+      "length": 52,
+      "width": 55,
+      "height": 82
+    },
+    "delivery_constraints": {
+      "min_door_width": 55,
+      "is_disassemblable": false,
+      "package_size": "整椅包装约 60 × 62 × 90 cm"
+    },
+    "material": "耐污科技布 / 金属内架 / 高回弹海绵",
+    "features": [
+      "防水抗污",
+      "靠背包裹感强",
+      "餐厅适配"
+    ],
+    "image_url": "/assets/furniture/chair-001云朵餐椅.png"
+  },
+  {
+    "id": "chair-002",
+    "name": "藤编原木餐椅",
+    "category": "chair",
+    "style": "原木风",
+    "price": 699,
+    "dimensions": {
+      "length": 48,
+      "width": 52,
+      "height": 80
+    },
+    "delivery_constraints": {
+      "min_door_width": 52,
+      "is_disassemblable": true,
+      "package_size": "椅背可拆，包装约 55 × 58 × 72 cm"
+    },
+    "material": "白蜡木 / 天然藤编 / 棉麻坐垫",
+    "features": [
+      "透气舒适",
+      "轻量易移动",
+      "原木餐厅"
+    ],
+    "image_url": "/assets/furniture/chair-002藤编原木餐椅.png"
+  },
+  {
+    "id": "lamp-001",
+    "name": "纸灯落地灯",
+    "category": "lamp",
+    "style": "原木风",
+    "price": 1260,
+    "dimensions": {
+      "length": 42,
+      "width": 42,
+      "height": 148
+    },
+    "delivery_constraints": {
+      "min_door_width": 42,
+      "is_disassemblable": true,
+      "package_size": "灯罩、灯杆、底座分装，包装约 155 × 45 × 18 cm"
+    },
+    "material": "和纸灯罩 / 白橡木灯杆 / 铁艺底座",
+    "features": [
+      "暖光氛围",
+      "可调亮度",
+      "客厅与卧室适配"
+    ],
+    "image_url": "/assets/furniture/lamp-001纸灯落地灯.png"
+  },
+  {
+    "id": "lamp-002",
+    "name": "雾面蘑菇灯",
+    "category": "lamp",
+    "style": "现代极简",
+    "price": 840,
+    "dimensions": {
+      "length": 36,
+      "width": 36,
+      "height": 42
+    },
+    "delivery_constraints": {
+      "min_door_width": 36,
+      "is_disassemblable": false,
+      "package_size": "整灯包装约 42 × 42 × 50 cm"
+    },
+    "material": "铝合金灯体 / 亚克力柔光罩",
+    "features": [
+      "小户型适配",
+      "暖光",
+      "同风格平替"
+    ],
+    "image_url": "/assets/furniture/lamp-002雾面蘑菇灯.png"
+  },
+  {
+    "id": "bed-001",
+    "name": "云朵软包床",
+    "category": "bed",
+    "style": "奶油风",
+    "price": 3999,
+    "dimensions": {
+      "length": 215,
+      "width": 188,
+      "height": 105
+    },
+    "delivery_constraints": {
+      "min_door_width": 70,
+      "is_disassemblable": true,
+      "package_size": "床头、床架分装，最大包装约 205 × 110 × 25 cm"
+    },
+    "material": "科技布 / 实木排骨架 / 高回弹海绵",
+    "features": [
+      "适合卧室",
+      "床头柔软防磕",
+      "1.8 米床"
+    ],
+    "image_url": "/assets/furniture/bed-001云朵软包床.png"
+  },
+  {
+    "id": "bed-002",
+    "name": "北欧实木平台床",
+    "category": "bed",
+    "style": "原木风",
+    "price": 3299,
+    "dimensions": {
+      "length": 215,
+      "width": 168,
+      "height": 92
+    },
+    "delivery_constraints": {
+      "min_door_width": 68,
+      "is_disassemblable": true,
+      "package_size": "床架拆装后 4 箱，最大包装约 175 × 30 × 20 cm"
+    },
+    "material": "北美白橡木 / 环保清漆 / 实木排骨架",
+    "features": [
+      "1.5 米床",
+      "稳固耐用",
+      "卧室原木风"
+    ],
+    "image_url": "/assets/furniture/bed-002 北欧实木平台床.png"
+  },
+  {
+    "id": "storage-001",
+    "name": "四抽屉原木斗柜",
+    "category": "storage",
+    "style": "原木风",
+    "price": 2399,
+    "dimensions": {
+      "length": 90,
+      "width": 42,
+      "height": 88
+    },
+    "delivery_constraints": {
+      "min_door_width": 68,
+      "is_disassemblable": true,
+      "package_size": "柜体与抽屉分装，包装约 98 × 50 × 80 cm"
+    },
+    "material": "白橡木 / 实木抽屉 / 环保木蜡油",
+    "features": [
+      "卧室收纳",
+      "抽屉防尘",
+      "小户型适配"
+    ],
+    "image_url": "/assets/furniture/storage-001四抽屉原木斗柜.png"
+  },
+  {
+    "id": "storage-002",
+    "name": "藤编边柜",
+    "category": "storage",
+    "style": "原木风",
+    "price": 2100,
+    "dimensions": {
+      "length": 90,
+      "width": 40,
+      "height": 82
+    },
+    "delivery_constraints": {
+      "min_door_width": 70,
+      "is_disassemblable": true,
+      "package_size": "柜门与柜体分装，包装约 98 × 48 × 74 cm"
+    },
+    "material": "橡木框架 / 天然藤编门 / 低甲醛板材",
+    "features": [
+      "客厅收纳",
+      "透气防潮",
+      "适合原木空间"
+    ],
+    "image_url": "/assets/furniture/storage-002藤编边柜.png"
+  },
+  {
+    "id": "chair-003",
+    "name": "羊羔绒单人椅",
+    "category": "chair",
+    "style": "奶油风",
+    "price": 1680,
+    "dimensions": {
+      "length": 82,
+      "width": 86,
+      "height": 76
+    },
+    "delivery_constraints": {
+      "min_door_width": 84,
+      "is_disassemblable": false,
+      "package_size": "整椅包装约 90 × 94 × 82 cm"
+    },
+    "material": "羊羔绒 / 金属框架 / 高密度海绵",
+    "features": [
+      "阅读角",
+      "柔软包裹",
+      "需确认入户"
+    ],
+    "image_url": "/assets/furniture/chair-003羊羔绒单人椅.png"
+  },
+  {
+    "id": "rug-001",
+    "name": "手工编织地毯",
+    "category": "rug",
+    "style": "原木风",
+    "price": 1220,
+    "dimensions": {
+      "length": 230,
+      "width": 160,
+      "height": 1
+    },
+    "delivery_constraints": {
+      "min_door_width": 40,
+      "is_disassemblable": true,
+      "package_size": "卷筒包装约 165 × 18 × 18 cm"
+    },
+    "material": "棉麻混纺 / 防滑底布",
+    "features": [
+      "客厅适配",
+      "可卷收",
+      "脚感柔和"
+    ],
+    "image_url": "/assets/furniture/rug-001手工编织地毯.png"
+  },
+  {
+    "id": "desk-001",
+    "name": "静音原木书桌",
+    "category": "desk",
+    "style": "原木风",
+    "price": 1499,
+    "dimensions": {
+      "length": 120,
+      "width": 60,
+      "height": 75
+    },
+    "delivery_constraints": {
+      "min_door_width": 68,
+      "is_disassemblable": true,
+      "package_size": "桌腿可拆，包装约 128 × 68 × 16 cm"
+    },
+    "material": "橡木贴皮 / 实木桌腿 / 环保漆",
+    "features": [
+      "书房书桌",
+      "抽屉收纳",
+      "理线孔"
+    ],
+    "image_url": "/assets/furniture/desk-001静音原木书桌.png"
+  },
+  {
+    "id": "vanity-001",
+    "name": "月光梳妆台",
+    "category": "vanity",
+    "style": "现代极简",
+    "price": 1899,
+    "dimensions": {
+      "length": 100,
+      "width": 45,
+      "height": 135
+    },
+    "delivery_constraints": {
+      "min_door_width": 68,
+      "is_disassemblable": true,
+      "package_size": "桌体与镜面分装，包装约 108 × 54 × 78 cm"
+    },
+    "material": "环保板材 / 防爆镜面 / 柔光灯带",
+    "features": [
+      "卧室适配",
+      "带镜面",
+      "收纳抽屉"
+    ],
+    "image_url": "/assets/furniture/vanity-001月光梳妆台.png"
+  },
+  {
+    "id": "storage-003",
+    "name": "开放式五层书柜",
+    "category": "storage",
+    "style": "现代极简",
+    "price": 2299,
+    "dimensions": {
+      "length": 80,
+      "width": 32,
+      "height": 180
+    },
+    "delivery_constraints": {
+      "min_door_width": 70,
+      "is_disassemblable": true,
+      "package_size": "层板与立柱分装，包装约 188 × 40 × 18 cm"
+    },
+    "material": "橡木饰面板 / 碳钢框架 / 防倾倒配件",
+    "features": [
+      "书房适配",
+      "需要墙面固定",
+      "开放展示"
+    ],
+    "image_url": "/assets/furniture/storage-003 开放式五层书柜.png"
+  },
+  {
+    "id": "storage-004",
+    "name": "窄款餐边柜",
+    "category": "storage",
+    "style": "现代极简",
+    "price": 1999,
+    "dimensions": {
+      "length": 120,
+      "width": 38,
+      "height": 82
+    },
+    "delivery_constraints": {
+      "min_door_width": 65,
+      "is_disassemblable": true,
+      "package_size": "柜体分两箱，单箱约 65 × 48 × 88 cm"
+    },
+    "material": "哑光烤漆板 / 实木脚 / 阻尼铰链",
+    "features": [
+      "餐厅收纳",
+      "窄进深",
+      "防尘柜门"
+    ],
+    "image_url": "/assets/furniture/storage-004窄款餐边柜.png"
+  }
+];
