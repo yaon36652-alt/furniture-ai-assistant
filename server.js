@@ -427,6 +427,31 @@ async function modelChat(message, context) {
   return { answer, mode: 'model', model: responseModel };
 }
 
+function textFromContent(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.map(part => {
+    if (typeof part === 'string') return part;
+    return typeof part?.text === 'string' ? part.text : '';
+  }).join('');
+}
+
+function textFromCompletionChoice(choice) {
+  if (!choice || typeof choice !== 'object') return '';
+  return textFromContent(choice.delta?.content)
+    || textFromContent(choice.message?.content)
+    || textFromContent(choice.text)
+    || textFromContent(choice.delta?.text);
+}
+
+function textFromCompletionPayload(payload) {
+  return textFromCompletionChoice(payload?.choices?.[0])
+    || textFromContent(payload?.delta)
+    || textFromContent(payload?.text)
+    || textFromContent(payload?.output_text)
+    || textFromContent(payload?.response?.output_text);
+}
+
 async function streamModelChat(message, context, onChunk) {
   const cached = getCachedChatAnswer(message);
   const model = String(process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
@@ -438,41 +463,91 @@ async function streamModelChat(message, context, onChunk) {
   if (!response.body) throw Object.assign(new Error('model_empty_response'), { statusCode: 502, elapsedMs: Date.now() - startedAt });
   const contentType = response.headers.get('content-type') || '';
   let answer = '';
+  let eventCount = 0;
+  let chunkCount = 0;
   if (contentType.includes('application/json')) {
-    const data = await response.json();
-    answer = typeof data.choices?.[0]?.message?.content === 'string' ? data.choices[0].message.content : '';
+    const raw = await response.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      // Some compatible gateways incorrectly label an SSE body as JSON. Try
+      // the same SSE parser below before reporting an invalid response.
+      data = null;
+    }
+    answer = textFromCompletionPayload(data);
     if (answer) onChunk(answer);
+    if (!answer && raw.includes('data:')) {
+      const parseSse = parseSseText(raw, text => { answer += text; onChunk(text); });
+      eventCount = parseSse.eventCount;
+      chunkCount = parseSse.chunkCount;
+    }
   } else {
     const decoder = new TextDecoder();
     let buffer = '';
-    const consume = line => {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('data:')) return;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === '[DONE]') return;
-      let parsed;
-      try { parsed = JSON.parse(payload); } catch { return; }
-      const text = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.text ?? '';
-      if (typeof text === 'string' && text) { answer += text; onChunk(text); }
+    let dataLines = [];
+    const consumeLine = line => {
+      const normalized = line.replace(/^\uFEFF/, '');
+      if (!normalized.trim()) {
+        if (dataLines.length) {
+          const payload = dataLines.join('\n').trim();
+          dataLines = [];
+          if (!payload || payload === '[DONE]') return;
+          eventCount += 1;
+          let parsed;
+          try { parsed = JSON.parse(payload); } catch { return; }
+          const text = textFromCompletionPayload(parsed);
+          if (text) { chunkCount += 1; answer += text; onChunk(text); }
+        }
+        return;
+      }
+      if (normalized.startsWith('data:')) dataLines.push(normalized.slice(5).trim());
     };
     for await (const chunk of response.body) {
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() || '';
-      lines.forEach(consume);
+      lines.forEach(consumeLine);
     }
     buffer += decoder.decode();
-    buffer.split(/\r?\n/).forEach(consume);
+    buffer.split(/\r?\n/).forEach(consumeLine);
+    consumeLine('');
   }
   answer = answer.trim();
   if (!answer) {
     const error = new Error('model_empty_response');
     error.statusCode = 502;
     error.elapsedMs = Date.now() - startedAt;
+    error.providerDetail = `stream content_type=${contentType || 'unknown'} events=${eventCount} chunks=${chunkCount}`;
     throw error;
   }
   cacheChatAnswer(message, answer);
   return { answer, mode: 'model', model: responseModel };
+}
+
+function parseSseText(source, onText) {
+  let eventCount = 0;
+  let chunkCount = 0;
+  let dataLines = [];
+  const consumeLine = line => {
+    const normalized = line.replace(/^\uFEFF/, '');
+    if (!normalized.trim()) {
+      if (!dataLines.length) return;
+      const payload = dataLines.join('\n').trim();
+      dataLines = [];
+      if (!payload || payload === '[DONE]') return;
+      eventCount += 1;
+      let parsed;
+      try { parsed = JSON.parse(payload); } catch { return; }
+      const text = textFromCompletionPayload(parsed);
+      if (text) { chunkCount += 1; onText(text); }
+      return;
+    }
+    if (normalized.startsWith('data:')) dataLines.push(normalized.slice(5).trim());
+  };
+  source.split(/\r?\n/).forEach(consumeLine);
+  consumeLine('');
+  return { eventCount, chunkCount };
 }
 
 function writeSse(res, event, payload) {
