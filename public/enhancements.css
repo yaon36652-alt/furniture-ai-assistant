@@ -125,6 +125,29 @@ select {
   color: #26302d;
 }
 
+.form-grid select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.form-grid select:focus { border-color: #8bb49a; }
+
+.elevator-field > span:first-child { display: block; }
+.elevator-control { display: inline-flex; align-items: center; gap: 7px; margin-top: 6px; color: var(--green-dark); }
+.elevator-control input { position: absolute; opacity: 0; pointer-events: none; }
+.elevator-switch { position: relative; width: 34px; height: 20px; border-radius: 20px; background: #d8ded9; transition: background .2s; }
+.elevator-switch::after { content: ''; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(39,53,46,.18); transition: transform .2s; }
+.elevator-control input:checked + .elevator-switch { background: var(--green); }
+.elevator-control input:checked + .elevator-switch::after { transform: translateX(14px); }
+.elevator-control small { font-size: 10px; color: #7c8b81; }
+
 /* Chat messages: keep user and assistant turns visually distinct and scannable. */
 .chat-messages {
   display: flex;

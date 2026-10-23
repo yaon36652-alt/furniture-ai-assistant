@@ -79,7 +79,7 @@ function getFurnitureForCurrentRoom(){
   return result;
 }
 const roomMeta = { living:{label:'客厅',title:'为你的客厅挑选。'}, bedroom:{label:'卧室',title:'为你的卧室挑选。'}, study:{label:'书房',title:'为你的书房挑选。'}, dining:{label:'餐厅',title:'为你的餐厅挑选。'} };
-const defaultRoom = { length:420, width:280, doorWidth:82, height:275, household:3 };
+const defaultRoom = { length:420, width:280, doorWidth:82, height:275, household:3, budgetLimit:12000, lightDirection:'西向', targetFurnitureCount:6, hasElevator:true, style:'自然原木' };
 let activeRoom = 'living';
 let roomState = {...defaultRoom};
 let shopping = [];
@@ -91,10 +91,81 @@ let previewSelection = [...previewByRoom.living];
 let activeCategory = '全部';
 let sortDescending = true;
 
+function normalizeRoomState(state={}){
+  const merged={...defaultRoom,...state};
+  const positiveNumber=(value,fallback)=>Math.max(1,Number(value)||fallback);
+  return {
+    ...merged,
+    length:positiveNumber(merged.length,defaultRoom.length),
+    width:positiveNumber(merged.width,defaultRoom.width),
+    doorWidth:positiveNumber(merged.doorWidth,defaultRoom.doorWidth),
+    height:positiveNumber(merged.height,defaultRoom.height),
+    household:Math.min(20,Math.max(1,Math.round(Number(merged.household)||defaultRoom.household))),
+    budgetLimit:positiveNumber(merged.budgetLimit,defaultRoom.budgetLimit),
+    targetFurnitureCount:Math.max(1,Math.round(Number(merged.targetFurnitureCount)||defaultRoom.targetFurnitureCount)),
+    lightDirection:['东向','南向','西向','北向'].includes(merged.lightDirection) ? merged.lightDirection : defaultRoom.lightDirection,
+    hasElevator:Boolean(merged.hasElevator),
+    style:String(merged.style||defaultRoom.style)
+  };
+}
+
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 function money(value){ return '¥ ' + value.toLocaleString('zh-CN'); }
 function toast(message){ const el=$('#toast'); el.textContent=message; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2200); }
+function maxFurnitureSide(item){ const dimensions=item?.dimensions||{}; return Math.max(Number(dimensions.length)||0,Number(dimensions.width)||0,Number(dimensions.height)||0); }
+function updateRoomForm(){
+  roomState=normalizeRoomState(roomState);
+  $('#room-length').value=roomState.length;
+  $('#room-width').value=roomState.width;
+  $('#room-door').value=roomState.doorWidth;
+  $('#room-height').value=roomState.height;
+  $('#room-budget').value=roomState.budgetLimit;
+  $('#target-furniture-count').value=roomState.targetFurnitureCount;
+  $('#light-direction').value=roomState.lightDirection;
+  $('#has-elevator').checked=roomState.hasElevator;
+  $('#elevator-state').textContent=roomState.hasElevator?'是':'否';
+  $$('.choice[data-style]').forEach(button=>button.classList.toggle('active',button.dataset.style===roomState.style));
+}
+function updateRoomSummary(){
+  const area=(roomState.length*roomState.width/10000).toFixed(1);
+  const roomLabel=roomMeta[activeRoom].label;
+  $('#room-summary-title').textContent=`林野公寓 · ${roomLabel}`;
+  $('#room-area-summary').textContent=`${area}㎡`;
+  $('#room-light-summary').textContent=roomState.lightDirection;
+  $('#room-household-summary').textContent=`${roomState.household} 口人`;
+  $('#overview-room-copy').textContent=`这里是你的${roomLabel}软装工作台。AI 已经读懂空间，接下来帮你做更稳妥的选择。`;
+  $('#chat-room-context').textContent=`正在参考：林野公寓 · ${roomLabel}`;
+}
+function validateTargetFurnitureInput(input){
+  if(!input || input.value==='')return true;
+  if(Number(input.value)<1){ input.value='1'; alert('目标件数至少为1'); return false; }
+  return true;
+}
+function saveRoomSettings(){
+  const targetInput=$('#target-furniture-count');
+  if(!validateTargetFurnitureInput(targetInput))return false;
+  const selectedStyle=$('.choice.active[data-style]')?.dataset.style || roomState.style;
+  roomState=normalizeRoomState({
+    ...roomState,
+    length:$('#room-length').value,
+    width:$('#room-width').value,
+    doorWidth:$('#room-door').value,
+    height:$('#room-height').value,
+    budgetLimit:$('#room-budget').value,
+    targetFurnitureCount:targetInput.value,
+    lightDirection:$('#light-direction').value,
+    hasElevator:$('#has-elevator').checked,
+    household:$('#household-size').value,
+    style:selectedStyle
+  });
+  updateRoomForm();
+  saveState();
+  renderRecommendations(); renderShopping(); renderOverviewFeatured(); renderSelectedProductPanel(); renderPreviewSelection();
+  updateRoomSummary();
+  toast('空间信息已保存，工作台指标已更新');
+  return true;
+}
 function defaultPreviewTransform(index=0){ return { x:index===0 ? -16 : Math.min(28,index*22), y:index%2 ? 8 : 0, scale:1 }; }
 function previewTransform(id,index=0){ return { ...defaultPreviewTransform(index), ...(previewTransformsByRoom[activeRoom]?.[id] || {}) }; }
 function setPreviewTransform(id,patch){ if(!previewTransformsByRoom[activeRoom])previewTransformsByRoom[activeRoom]={}; previewTransformsByRoom[activeRoom][id]={...previewTransform(id),...patch}; }
@@ -340,7 +411,8 @@ function loadState(){
     }
     previewByRoom=migratedPreview;
     if(storedActive && roomMeta[storedActive]) activeRoom=storedActive;
-    roomState={...defaultRoom,...roomStates[activeRoom]};
+    roomStates=Object.fromEntries(Object.entries(roomStates).map(([room,state])=>[room,normalizeRoomState(state)]));
+    roomState=normalizeRoomState(roomStates[activeRoom]);
     shopping=(shoppingByRoom[activeRoom]||[]).map(id=>product(id)).filter(Boolean);
     previewSelection=(previewByRoom[activeRoom]||[]).map(id=>product(id)).filter(Boolean).map(item=>item.id);
     if(Array.isArray(storedFavorites)) favorites=storedFavorites;
@@ -364,8 +436,8 @@ function renderRecommendations(){
   $$('#recommend-grid [data-favorite]').forEach(btn=>btn.addEventListener('click',()=>toggleFavorite(btn.dataset.favorite,btn)));
 }
 function updateBudget(){
-  const total=shopping.reduce((sum,item)=>sum+item.price,0); const remaining=12000-total; const count=shopping.length;
-  $('#budget-total').textContent=money(total); $('#budget-subtotal').textContent=money(total); $('#budget-remaining').textContent=money(Math.max(0,remaining)); $('#budget-progress-bar').style.width=Math.min(100,total/12000*100)+'%'; $('#list-count').textContent=`${count} 件家具`; $('#nav-count').textContent=count; $('#metric-budget').textContent=money(total||8460); $('#metric-risk').innerHTML=`${shopping.filter(item=>item.status!=='pass').length||1} <em>/ ${Math.max(6,count)} 件</em>`; $('#shopping-room-title').textContent=`${roomMeta[activeRoom].label}方案 A`;
+  const total=shopping.reduce((sum,item)=>sum+item.price,0); const budgetLimit=roomState.budgetLimit; const remaining=budgetLimit-total; const count=shopping.length; const target=roomState.targetFurnitureCount; const riskCount=shopping.filter(item=>maxFurnitureSide(item)>roomState.doorWidth).length; const progress=Math.min(100,Math.round(count/target*100));
+  $('#budget-total').textContent=money(total); $('#budget-subtotal').textContent=money(total); $('#budget-remaining').textContent=money(Math.max(0,remaining)); $('#budget-progress-bar').style.width=Math.min(100,total/budgetLimit*100)+'%'; $('#budget-limit-note').textContent=`你的预算上限是 ${money(budgetLimit)}`; $('#list-count').textContent=`${count} 件家具`; $('#nav-count').textContent=count; $('#metric-budget').textContent=money(total); $('#metric-budget-note').textContent=remaining>=0?`↓ 比预算低 ${Math.round(remaining/budgetLimit*100)}%`:`↑ 超出预算 ${Math.round(Math.abs(remaining)/budgetLimit*100)}%`; $('#metric-risk').innerHTML=`${riskCount} <em>/ ${target} 件</em>`; $('#metric-progress').innerHTML=`${progress}<span class="unit">%</span>`; $('#metric-progress-bar').style.width=`${progress}%`; $('#shopping-room-title').textContent=`${roomMeta[activeRoom].label}方案 A`;
   const checkout=$('#checkout-plan');
   if(checkout){checkout.disabled=count===0;checkout.setAttribute('aria-disabled',String(count===0));}
 }
@@ -479,7 +551,11 @@ function roomContext(){
     roomName:roomMeta[activeRoom].label,
     dimensions:roomState,
     household:roomState.household,
-    budget:{limit:12000,spent:shopping.reduce((sum,item)=>sum+item.price,0),remaining:Math.max(0,12000-shopping.reduce((sum,item)=>sum+item.price,0))},
+    budget:{limit:roomState.budgetLimit,spent:shopping.reduce((sum,item)=>sum+item.price,0),remaining:Math.max(0,roomState.budgetLimit-shopping.reduce((sum,item)=>sum+item.price,0))},
+    targetFurnitureCount:roomState.targetFurnitureCount,
+    lightDirection:roomState.lightDirection,
+    hasElevator:roomState.hasElevator,
+    style:roomState.style,
     shopping:shopping.map(item=>({id:item.id,name:item.name,price:item.price,category:item.category,categoryKey:item.categoryKey,style:item.style,features:item.features,size:item.size,status:item.statusText})),
     recommendations:getFurnitureForCurrentRoom().map(item=>({id:item.id,name:item.name,price:item.price,category:item.category,categoryKey:item.categoryKey,style:item.style,features:item.features,size:item.size,status:item.statusText}))
   };
@@ -496,12 +572,12 @@ async function askAssistant(text){
 function setRoom(roomId){
   if(!roomMeta[roomId]||roomId===activeRoom)return;
   roomStates[activeRoom]={...roomState}; shoppingByRoom[activeRoom]=shopping.map(item=>item.id); previewByRoom[activeRoom]=[...previewSelection];
-  activeRoom=roomId; roomState={...defaultRoom,...roomStates[activeRoom]};
+  activeRoom=roomId; roomState=normalizeRoomState(roomStates[activeRoom]);
   shopping=(shoppingByRoom[activeRoom]||[]).map(id=>product(id)).filter(Boolean);
   previewSelection=(previewByRoom[activeRoom]||[]).map(id=>product(id)).filter(Boolean).map(item=>item.id);
   activeCategory='全部';
   selectedProductId=null;
-  $('#room-select').value=activeRoom; $('#room-summary-title').textContent=`林野公寓 · ${roomMeta[activeRoom].label}`; $('#chat-room-context').textContent=`正在参考：林野公寓 · ${roomMeta[activeRoom].label}`; $('#room-length').value=roomState.length; $('#room-width').value=roomState.width; $('#room-door').value=roomState.doorWidth; $('#room-height').value=roomState.height; $('#household-size').value=roomState.household; $('#room-household-summary').textContent=`${roomState.household} 口人`; renderRecommendations(); renderShopping(); renderOverviewFeatured(); renderSelectedProductPanel(); renderPreviewSelection(); saveState(); toast(`已切换到${roomMeta[activeRoom].label}`);
+  $('#room-select').value=activeRoom; $('#chat-room-context').textContent=`正在参考：林野公寓 · ${roomMeta[activeRoom].label}`; $('#household-size').value=roomState.household; updateRoomForm(); updateRoomSummary(); renderRecommendations(); renderShopping(); renderOverviewFeatured(); renderSelectedProductPanel(); renderPreviewSelection(); saveState(); toast(`已切换到${roomMeta[activeRoom].label}`);
 }
 
 async function initializeApp(){
@@ -515,7 +591,7 @@ async function initializeApp(){
   loadState();
   selectedProductId=null;
   renderRecommendations(); renderShopping(); renderOverviewFeatured(); renderSelectedProductPanel(); renderPreviewSelection();
-  $('#room-select').value=activeRoom; $('#room-summary-title').textContent=`林野公寓 · ${roomMeta[activeRoom].label}`; $('#chat-room-context').textContent=`正在参考：林野公寓 · ${roomMeta[activeRoom].label}`; $('#room-length').value=roomState.length; $('#room-width').value=roomState.width; $('#room-door').value=roomState.doorWidth; $('#room-height').value=roomState.height; $('#household-size').value=roomState.household; $('#room-select').addEventListener('change',event=>setRoom(event.target.value));
+  $('#room-select').value=activeRoom; $('#chat-room-context').textContent=`正在参考：林野公寓 · ${roomMeta[activeRoom].label}`; updateRoomForm(); updateRoomSummary(); $('#room-select').addEventListener('change',event=>setRoom(event.target.value));
   // Overview cards are rendered from furniture_db.json and bind their own actions.
   const sendAssistantMessage=async text=>{addChatMessage(text,true);const pending=addChatMessage('正在思考',false,true);let streamedAnswer='';try{const result=await askAssistantStream(text,(_,answer)=>{streamedAnswer=answer;updateAssistantMessage(pending,streamedAnswer,false);});pending.classList.remove('pending');updateAssistantMessage(pending,result.answer,false);if(result.action?.type==='replace_budget_lamp')replaceWithBudgetLamp();const content=pending.querySelector('.assistant-content');if(content&&!pending.dataset.recommendationsRendered){renderChatRecommendations(content,result.answer,text);pending.dataset.recommendationsRendered='true';}if(result.mode==='cache')toast('已从本地缓存快速返回');}catch(error){pending.remove();scrollChatToBottom();addChatMessage(error.message||'暂时无法连接导购服务。请确认本地服务已启动，稍后重试。',false,false,'',false);}};
   $('#chat-form').addEventListener('submit',e=>{e.preventDefault();const input=$('#chat-input');if(!input.value.trim())return;const text=input.value.trim();input.value='';sendAssistantMessage(text);});
@@ -540,10 +616,14 @@ async function initializeApp(){
   });
   $('#clear-preview').addEventListener('click',()=>{previewSelection=[];selectedProductId=null;saveState();renderPreviewSelection();renderSelectedProductPanel();updatePreviewScene();toast('已清空预览组合');});
   $('#checkout-plan')?.addEventListener('click',checkoutPlan);
-  $('#save-room').addEventListener('click',()=>{roomState={...roomState,length:Number($('#room-length').value)||defaultRoom.length,width:Number($('#room-width').value)||defaultRoom.width,doorWidth:Number($('#room-door').value)||defaultRoom.doorWidth,height:Number($('#room-height').value)||defaultRoom.height,household:Math.min(20,Math.max(1,Number($('#household-size').value)||defaultRoom.household))};$('#household-size').value=roomState.household;saveState();renderRecommendations();renderShopping();renderOverviewFeatured();renderSelectedProductPanel();$('#room-household-summary').textContent=`${roomState.household} 口人`;toast('空间信息已保存，推荐会同步更新');});
+  $('#save-room').addEventListener('click',saveRoomSettings);
   $('#room-length').value=roomState.length; $('#room-width').value=roomState.width;
   $('#refresh-recs').addEventListener('click',e=>{e.currentTarget.textContent='生成中…';setTimeout(()=>{e.currentTarget.textContent='✦ 重新生成';toast('已根据最新偏好更新推荐');},900);});
   $$('.choice').forEach(btn=>btn.addEventListener('click',()=>{btn.parentElement.querySelectorAll('.choice').forEach(x=>x.classList.remove('active'));btn.classList.add('active');}));
+  const targetCountInput=$('#target-furniture-count');
+  targetCountInput?.addEventListener('input',()=>validateTargetFurnitureInput(targetCountInput));
+  targetCountInput?.addEventListener('blur',()=>validateTargetFurnitureInput(targetCountInput));
+  $('#has-elevator')?.addEventListener('change',event=>{ $('#elevator-state').textContent=event.target.checked?'是':'否'; });
   $$('.filter-pill').forEach(btn=>btn.addEventListener('click',()=>{activeCategory=btn.dataset.category;$$('.filter-pill').forEach(x=>x.classList.toggle('active',x===btn));renderRecommendations();}));
   $('#sort-recs').addEventListener('click',()=>{sortDescending=!sortDescending;$('#sort-recs').textContent=sortDescending?'匹配度最高⌄':'价格从低到高⌄';renderRecommendations();});
   $('#upload-zone').addEventListener('click',()=>$('#room-photo').click());
